@@ -11,56 +11,68 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 
 # ================= MYSQL CONNECTION =================
-try:
-    db = mysql.connector.connect(
-        host=os.getenv("MYSQLHOST"),
-        user=os.getenv("MYSQLUSER"),
-        password=os.getenv("MYSQLPASSWORD"),
-        database=os.getenv("MYSQLDATABASE"),
-        port=int(os.getenv("MYSQLPORT", 3306))
-    )
-    cursor = db.cursor(dictionary=True)
-    print("Database connected successfully!")
-except mysql.connector.Error as e:
-    print(f"Error connecting to database: {e}")
+db = None
+cursor = None
 
+def init_db():
+    """Initialize the global database connection and cursor."""
+    global db, cursor
+    try:
+        if db is None or not db.is_connected():
+            db = mysql.connector.connect(
+                host=os.getenv("MYSQLHOST"),
+                user=os.getenv("MYSQLUSER"),
+                password=os.getenv("MYSQLPASSWORD"),
+                database=os.getenv("MYSQLDATABASE"),
+                port=int(os.getenv("MYSQLPORT", 3306))
+            )
+            cursor = db.cursor(dictionary=True)
+            print("Database connected successfully!")
+    except mysql.connector.Error as e:
+        print(f"Error connecting to database: {e}")
+        db = None
+        cursor = None
+
+# Initialize DB at startup
+init_db()
 
 # ================= HOME =================
 @app.route("/")
 def home():
+    init_db()  # Ensure DB is alive
     return render_template("index.html", user=session.get("user"))
 
 # ================= CONTACT =================
 @app.route("/contact", methods=["POST"])
 def contact():
+    init_db()
+    if not cursor:
+        return "Database connection error", 500
+
     name = request.form["name"]
     email = request.form["email"]
     message = request.form["message"]
 
-    sql = """
-        INSERT INTO contact_messages (name, email, message)
-        VALUES (%s, %s, %s)
-    """
+    sql = "INSERT INTO contact_messages (name, email, message) VALUES (%s, %s, %s)"
     cursor.execute(sql, (name, email, message))
     db.commit()
-
     return redirect("/")
 
 # ================= REGISTER =================
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    init_db()
     if request.method == "POST":
+        if not cursor:
+            return "Database connection error", 500
+
         username = request.form["username"]
         email = request.form["email"]
         password = request.form["password"]
 
-        sql = """
-            INSERT INTO users (username, email, password)
-            VALUES (%s, %s, %s)
-        """
+        sql = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
         cursor.execute(sql, (username, email, password))
         db.commit()
-
         return redirect("/login")
 
     return render_template("register.html")
@@ -68,7 +80,11 @@ def register():
 # ================= LOGIN =================
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    init_db()
     if request.method == "POST":
+        if not cursor:
+            return "Database connection error", 500
+
         email = request.form["email"]
         password = request.form["password"]
 
@@ -92,5 +108,5 @@ def logout():
 
 # ================= RUN =================
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))  # Use Railway's dynamic port or fallback to 5000
-    app.run(host="0.0.0.0", port=port, debug=True)  # debug=True helps in logs
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
