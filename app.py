@@ -107,6 +107,14 @@ def logout():
     return redirect("/")
 
 # ================= RUN =================
+import os
+from flask import Flask
+
+app = Flask(__name__)
+
+# Your existing routes here
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 5000))  # Render provides PORT
+    app.run(host="0.0.0.0", port=port, debug=True)
+
