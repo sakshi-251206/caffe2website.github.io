@@ -8,7 +8,7 @@ load_dotenv()
 
 # ================= APP CONFIG =================
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
+app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
 # ================= MYSQL CONNECTION =================
 db = None
@@ -17,18 +17,18 @@ cursor = None
 def init_db():
     global db, cursor
     try:
-        if db is None or not db.is_connected():
-            db = mysql.connector.connect(
-                host=os.getenv("MYSQLHOST"),
-                user=os.getenv("MYSQLUSER"),
-                password=os.getenv("MYSQLPASSWORD"),
-                database=os.getenv("MYSQLDATABASE"),
-                port=int(os.getenv("MYSQLPORT", 3306))
-            )
-            cursor = db.cursor(dictionary=True)
-            print("Database connected successfully!")
+        db = mysql.connector.connect(
+            host=os.getenv("MYSQLHOST"),
+            user=os.getenv("MYSQLUSER"),
+            password=os.getenv("MYSQLPASSWORD"),
+            database=os.getenv("MYSQLDATABASE"),
+            port=int(os.getenv("MYSQLPORT", 3306)),
+            ssl_disabled=False
+        )
+        cursor = db.cursor(dictionary=True)
+        print("Database connected successfully")
     except mysql.connector.Error as e:
-        print(f"DB Error: {e}")
+        print("Database connection error:", e)
         db = None
         cursor = None
 
@@ -41,12 +41,15 @@ def home():
 
 @app.route("/contact", methods=["POST"])
 def contact():
-    name = request.form["name"]
-    email = request.form["email"]
-    message = request.form["message"]
+    if cursor is None:
+        return "Database not connected"
+
+    name = request.form.get("name")
+    email = request.form.get("email")
+    message = request.form.get("message")
 
     cursor.execute(
-        "INSERT INTO contact_messages (name, email, message) VALUES (%s,%s,%s)",
+        "INSERT INTO contact_messages (name, email, message) VALUES (%s, %s, %s)",
         (name, email, message)
     )
     db.commit()
@@ -54,31 +57,41 @@ def contact():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if cursor is None:
+        return "Database not connected"
+
     if request.method == "POST":
         cursor.execute(
-            "INSERT INTO users (username,email,password) VALUES (%s,%s,%s)",
+            "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
             (
-                request.form["username"],
-                request.form["email"],
-                request.form["password"]
+                request.form.get("username"),
+                request.form.get("email"),
+                request.form.get("password")
             )
         )
         db.commit()
         return redirect("/login")
+
     return render_template("register.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if cursor is None:
+        return "Database not connected"
+
     if request.method == "POST":
         cursor.execute(
             "SELECT * FROM users WHERE email=%s AND password=%s",
-            (request.form["email"], request.form["password"])
+            (request.form.get("email"), request.form.get("password"))
         )
         user = cursor.fetchone()
+
         if user:
             session["user"] = user["username"]
             return redirect("/")
-        return "Invalid Email or Password"
+        else:
+            return "Invalid Email or Password"
+
     return render_template("login.html")
 
 @app.route("/logout")
